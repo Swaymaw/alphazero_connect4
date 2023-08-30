@@ -1,23 +1,25 @@
 import numpy as np
 import math
-
+import torch
 
 class Node:
-    def __init__(self, game, args, state, parent=None, action_taken=None):
+    def __init__(self, game, args, state, parent=None, action_taken=None, prior=0):
         self.game = game
         self.args = args
         self.state = state
         self.parent = parent
         self.action_taken = action_taken
+        self.prior = prior
 
         self.children = []
-        self.expandable_moves = game.get_valid_moves(state)
+        # not needed for alpha-zero MCTS
+        # self.expandable_moves = game.get_valid_moves(state)
 
         self.visit_count = 0
         self.value_sum = 0
 
     def is_fully_expanded(self):
-        return np.sum(self.expandable_moves) == 0 and len(self.children) > 0
+        return len(self.children) > 0    # and np.sum(self.expandable_moves) == 0    # only use if not using alpha-zero
 
     def select(self):
         best_child = None
@@ -32,21 +34,41 @@ class Node:
         return best_child
 
     def get_ucb(self, child):
-        # as a parent and child are opposing player we need to subtract the whole from 1
-        q = 1 - ((child.value_sum / child.visit_count) + 1)/2
-        return q + self.args['C'] * math.sqrt(math.log(self.visit_count) / child.visit_count)
+        # # as a parent and child are opposing player we need to subtract the whole from 1
+        # q = 1 - ((child.value_sum / child.visit_count) + 1)/2
+        # return q + self.args['C'] * math.sqrt(math.log(self.visit_count) / child.visit_count)
 
-    def expand(self):
-        action = np.random.choice(np.where(self.expandable_moves == 1)[0])
-        self.expandable_moves[action] = 0
+        # for alpha-zero MCTS
+        if child.visit_count == 0:
+            q_value = 0
+        else:
+            q_value = 1 - ((child.value_sum / child.visit_count) + 1) / 2
 
-        child_state = self.state.copy()
-        child_state = self.game.get_next_state(child_state, action, 1)
-        child_state = self.game.change_perspective(child_state, player=-1)
-        child = Node(self.game, self.args, child_state, self, action)
-        self.children.append(child)
+        return q_value + self.args["C"] * (math.sqrt(self.visit_count) / (child.visit_count + 1)) * child.prior
 
-        return child
+    # # in case of standard MCTS
+    # def expand(self):
+    #     action = np.random.choice(np.where(self.expandable_moves == 1)[0])
+    #     self.expandable_moves[action] = 0
+    #
+    #     child_state = self.state.copy()
+    #     child_state = self.game.get_next_state(child_state, action, 1)
+    #     child_state = self.game.change_perspective(child_state, player=-1)
+    #     child = Node(self.game, self.args, child_state, self, action)
+    #     self.children.append(child)
+    #
+    #     return child
+    # in case of alpha-zero MCTS
+
+    def expand(self, policy):
+        for action, prob in enumerate(policy):
+            if prob > 0:
+                child_state = self.state.copy()
+                child_state = self.game.get_next_state(child_state, action, 1)
+                child_state = self.game.change_perspective(child_state, player=-1)
+
+                child = Node(self.game, self.args, child_state, self, action, prob)
+                self.children.append(child)
 
     def simulate(self):
         value, is_terminal = self.game.get_value_and_terminated(self.state, self.action_taken)
@@ -78,10 +100,12 @@ class Node:
 
 class MCTS:
 
-    def __init__(self, game, args):
+    def __init__(self, game, args, model):
         self.game = game
         self.args = args
+        self.model = model
 
+    @torch.no_grad()
     def search(self, state):
         # define root
         root = Node(self.game, self.args, state)
@@ -96,10 +120,24 @@ class MCTS:
             value = self.game.get_opponent_value(value)
 
             if not is_terminal:
+                encoded_state = self.game.get_encoded_state(node.state)
+                policy, value = self.model(
+                    torch.tensor(encoded_state).view(-1, encoded_state.shape[0],
+                                                     encoded_state.shape[1], encoded_state.shape[2])
+
+                )
+                policy = torch.softmax(policy, axis=1).squeeze(0).cpu().numpy()
+                valid_moves = self.game.get_valid_moves(node.state)
+                policy *= valid_moves
+                policy /= np.sum(policy)
+
+                value = value.item()
+
                 # expansion
-                node = node.expand()
-                # simulation
-                value = node.simulate()
+                node.expand(policy)
+
+                # # simulation not needed for alphazero MCTS
+                # value = node.simulate()
 
             # backpropagation
             node.backpropagate(value)

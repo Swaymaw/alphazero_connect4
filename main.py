@@ -1,16 +1,20 @@
 from tictactoe import TicTacToe
-from mcts import Node, MCTS
+from mcts import MCTS
+from model import ResNet
 import numpy as np
 
 tictactoe = TicTacToe()
 player = 1
 
 args = {
-    'C': 1.41,
+    'C': 2,
     'num_searches': 1000
 }
 
-mcts = MCTS(tictactoe, args)
+model = ResNet(tictactoe, 4, 64)
+model.eval()
+
+mcts = MCTS(tictactoe, args, model)
 state = tictactoe.get_initial_state()
 
 while True:
