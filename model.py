@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import numpy as np
+import matplotlib.pyplot as plt
 
 
 class ResBlock(nn.Module):
@@ -75,7 +76,10 @@ def test():
 
     res_net = ResNet(tictactoe, 4, 64)
     policy, value = res_net(encoded_state)
-    print(f'Policy: {policy.tolist()[0]}\nValue: {value.tolist()[0]}')
+    policy = torch.softmax(policy, axis=1).squeeze().detach().to('cpu').numpy()
+    print(f'Policy: {policy}\nValue: {value.tolist()[0]}')
+    plt.bar(range(tictactoe.action_size), policy)
+    plt.show()
 
 
 test()
