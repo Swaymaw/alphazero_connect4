@@ -25,7 +25,11 @@ class AlphaZero:
 
             memory.append((neutral_state, action_probs, player))
 
-            action = np.random.choice(self.game.action_size, p=action_probs)
+            # the more the temperature the more we explore, the lower the temperature the more we exploit
+            temperature_action_probs = action_probs ** (1 / self.args['temperature'])
+            temperature_action_probs /= np.sum(temperature_action_probs)
+
+            action = np.random.choice(self.game.action_size, p=temperature_action_probs)
 
             state = self.game.get_next_state(state, action, player)
 
@@ -53,9 +57,9 @@ class AlphaZero:
             state, policy_targets, value_targets = (np.array(state), np.array(policy_targets),
                                                     np.array(value_targets).reshape((-1, 1)))
 
-            state = torch.tensor(state, dtype=torch.float32)
-            policy_targets = torch.tensor(policy_targets, dtype=torch.float32)
-            value_targets = torch.tensor(value_targets, dtype=torch.float32)
+            state = torch.tensor(state, dtype=torch.float32, device=self.model.device)
+            policy_targets = torch.tensor(policy_targets, dtype=torch.float32, device=self.model.device)
+            value_targets = torch.tensor(value_targets, dtype=torch.float32, device=self.model.device)
 
             out_policy, out_value = self.model(state)
 
@@ -79,5 +83,5 @@ class AlphaZero:
             for epoch in trange(self.args['num_epochs']):
                 self.train(memory)
 
-            torch.save(self.model.state_dict(), f'model_{iter}.pt')
-            torch.save(self.optimizer.state_dict(), f'optimizer_{iter}.pt')
+            torch.save(self.model.state_dict(), f'model_{iter}_{self.game}.pt')
+            torch.save(self.optimizer.state_dict(), f'optimizer_{iter}_{self.game}.pt')

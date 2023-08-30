@@ -1,7 +1,6 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-import numpy as np
 import matplotlib.pyplot as plt
 
 
@@ -24,8 +23,10 @@ class ResBlock(nn.Module):
 
 
 class ResNet(nn.Module):
-    def __init__(self, game, num_resBlocks, num_hidden):
+    def __init__(self, game, num_resBlocks, num_hidden, device):
         super().__init__()
+        self.device = device
+
         self.startBlock = nn.Sequential(
             nn.Conv2d(3, num_hidden, kernel_size=3, padding=1),
             nn.BatchNorm2d(num_hidden),
@@ -53,6 +54,8 @@ class ResNet(nn.Module):
             nn.Tanh()
         )
 
+        self.to(device)
+
     def forward(self, x):
         x = self.startBlock(x)
         for resBlock in self.backbone:
@@ -66,27 +69,28 @@ class ResNet(nn.Module):
 
 def test():
     from tictactoe import TicTacToe
-    tictactoe = TicTacToe()
-    state = tictactoe.get_initial_state()
-    state = tictactoe.get_next_state(state, 2, 1)
-    state = tictactoe.get_next_state(state, 4, -1)
-    state = tictactoe.get_next_state(state, 8, 1)
-    state = tictactoe.get_next_state(state, 1, -1)
+    game = TicTacToe()
+    state = game.get_initial_state()
+    state = game.get_next_state(state, 2, 1)
+    state = game.get_next_state(state, 4, -1)
+    state = game.get_next_state(state, 8, 1)
+    state = game.get_next_state(state, 1, -1)
 
     print(state)
 
-    encoded_state = tictactoe.get_encoded_state(state)
-    encoded_state = torch.tensor(encoded_state).view(-1, encoded_state.shape[0],
-                                                     encoded_state.shape[1], encoded_state.shape[2])
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    encoded_state = game.get_encoded_state(state)
+    encoded_state = torch.tensor(encoded_state, device=device).view(-1, encoded_state.shape[0],
+                                                                    encoded_state.shape[1], encoded_state.shape[2])
 
-    res_net = ResNet(tictactoe, 4, 64)
-    res_net.load_state_dict(torch.load('model_2.pt'))
+    res_net = ResNet(game, 4, 64, device=device)
+    res_net.load_state_dict(torch.load(f'model_2_{game}.pt'))
     res_net.eval()
 
     policy, value = res_net(encoded_state)
     policy = torch.softmax(policy, axis=1).squeeze().detach().to('cpu').numpy()
     # print(f'Policy: {policy}\nValue: {value.tolist()[0]}')
-    plt.bar(range(tictactoe.action_size), policy)
+    plt.bar(range(game.action_size), policy)
 
     plt.show()
 

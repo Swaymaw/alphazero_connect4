@@ -2,8 +2,9 @@ import numpy as np
 import math
 import torch
 
+
 class Node:
-    def __init__(self, game, args, state, parent=None, action_taken=None, prior=0):
+    def __init__(self, game, args, state, parent=None, action_taken=None, prior=0, visit_count=0):
         self.game = game
         self.args = args
         self.state = state
@@ -15,7 +16,7 @@ class Node:
         # not needed for alpha-zero MCTS
         # self.expandable_moves = game.get_valid_moves(state)
 
-        self.visit_count = 0
+        self.visit_count = visit_count
         self.value_sum = 0
 
     def is_fully_expanded(self):
@@ -108,7 +109,21 @@ class MCTS:
     @torch.no_grad()
     def search(self, state):
         # define root
-        root = Node(self.game, self.args, state)
+        root = Node(self.game, self.args, state, visit_count=1)
+
+        # add some noise to the policy to encourage more exploration
+        policy, value = self.model(torch.tensor(self.game.get_encoded_state(state),
+                                                device=self.model.device).unsqueeze(0))
+
+        policy = torch.softmax(policy, axis=1).squeeze(0).cpu().numpy()
+        valid_moves = self.game.get_valid_moves(state)
+        policy *= valid_moves
+        # adding noise
+        epsilon = self.args['dirichlet_epsilon']
+        policy = (1 - epsilon) * policy + epsilon * np.random.dirichlet([self.args['dirichlet_alpha']] * self.game.action_size)
+        policy /= np.sum(policy)
+
+        root.expand(policy)
 
         for search in range(self.args['num_searches']):
             node = root
@@ -122,7 +137,7 @@ class MCTS:
             if not is_terminal:
                 encoded_state = self.game.get_encoded_state(node.state)
                 policy, value = self.model(
-                    torch.tensor(encoded_state).view(-1, encoded_state.shape[0],
+                    torch.tensor(encoded_state, device=self.model.device).view(-1, encoded_state.shape[0],
                                                      encoded_state.shape[1], encoded_state.shape[2])
 
                 )

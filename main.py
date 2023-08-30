@@ -1,25 +1,30 @@
 from tictactoe import TicTacToe
-from mcts import MCTS
+from connect_four import ConnectFour
 from model import ResNet
-import numpy as np
 from alphazero import AlphaZero
 import torch
+device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-tictactoe = TicTacToe()
-model = ResNet(tictactoe, 4, 64)
-optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
+game = ConnectFour()
+
+model = ResNet(game, 9, 128, device=device)
+
+optimizer = torch.optim.Adam(model.parameters(), lr=0.001, weight_decay=0.0001)
 
 
 args = {
     'C': 2,
     'num_searches': 60,
-    'num_iterations': 3,
+    'num_iterations': 8,
     'self_play_iterations': 500,
-    'num_epochs': 4,
-    'batch_size': 64
+    'num_epochs': 8,
+    'batch_size': 128,
+    'temperature': 1.25,
+    'dirichlet_epsilon': 0.25,
+    'dirichlet_alpha': 0.3,
 }
 
-alphazero = AlphaZero(model, optimizer, tictactoe, args)
+alphazero = AlphaZero(model, optimizer, game, args)
 alphazero.learn()
 
 # while True:
