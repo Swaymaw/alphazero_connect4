@@ -72,9 +72,9 @@ def test():
     game = TicTacToe()
     state = game.get_initial_state()
     state = game.get_next_state(state, 2, 1)
-    state = game.get_next_state(state, 4, -1)
-    state = game.get_next_state(state, 8, 1)
-    state = game.get_next_state(state, 1, -1)
+    state = game.get_next_state(state, 0, -1)
+    state = game.get_next_state(state, 6, 1)
+
 
     print(state)
 
